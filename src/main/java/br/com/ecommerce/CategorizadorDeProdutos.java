@@ -5,24 +5,40 @@ import com.theokanning.openai.completion.chat.ChatMessage;
 import com.theokanning.openai.completion.chat.ChatMessageRole;
 import com.theokanning.openai.service.OpenAiService;
 
+import java.time.Duration;
 import java.util.Arrays;
 
 public class CategorizadorDeProdutos {
     public static void main(String[] args) {
 
-        var user = "escova de dentes";
-        var system = "Você é um categorizador de produtos";
+
+        var user = "Escova de dentes";
+        var system = """
+                    Você é um categorizador de produtos e deve responder apenas o nome da categoria do produto informado
+                    
+                    Escolha uma categoria dentra a lista abaixo:
+                    
+                    1. Higiene pessoal
+                    2. Eletronicos
+                    3. Esportes
+                    4. Outros
+                    
+                    ######Exemplo de uso:
+                    
+                    Pergunta: Bola de futebol
+                    Resposta: Esportes
+                """;
 
         var chave = System.getenv("OPEN_API_KEY");
 
-        var service = new OpenAiService(chave);
+        var service = new OpenAiService(chave, Duration.ofSeconds(30));
 
         var completionRequest = ChatCompletionRequest
                 .builder()
                 .model("gpt-4")
                 .messages(Arrays.asList(
-                        new ChatMessage(ChatMessageRole.USER.value(),user),
-                        new ChatMessage(ChatMessageRole.SYSTEM.value(),system)
+                        new ChatMessage(ChatMessageRole.USER.value(), user),
+                        new ChatMessage(ChatMessageRole.SYSTEM.value(), system)
                 ))
                 .n(2)
                 .build();
@@ -31,11 +47,8 @@ public class CategorizadorDeProdutos {
                 .getChoices()
                 .forEach(c -> {
                     System.out.print(c.getMessage().getContent());
-                    System.out.print("____________________________");
+                    System.out.print("\n------------------------\n");
                 });
-
-
-
 
 
     }
