@@ -1,5 +1,5 @@
-package br.com.ecommerce;
 
+import com.theokanning.openai.OpenAiHttpException;
 import com.theokanning.openai.completion.chat.ChatCompletionRequest;
 import com.theokanning.openai.completion.chat.ChatMessage;
 import com.theokanning.openai.completion.chat.ChatMessageRole;
@@ -10,15 +10,33 @@ import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
 import java.time.Duration;
 import java.util.Arrays;
+import java.util.List;
+import java.util.stream.Collectors;
 
 public class AnaliseDeSentimentos {
 
-    public static void main(String[] args) {
+    public static void main(String[] args) throws InterruptedException {
+        var arquivosDeAvaliacoes = carregarArquivosDeAvaliacoes();
+
+        for (var arquivo : arquivosDeAvaliacoes) {
+            System.out.println("Iniciando analise do produto: " + arquivo.getFileName());
+
+            var resposta = enviarRequisicao(arquivo);
+            salvarArquivoDeAnaliseDeSentimento(arquivo, resposta);
+
+            System.out.println("Analise finalizada");
+        }
+    }
+
+    private static String enviarRequisicao(Path arquivo) throws InterruptedException {
+        var chave = System.getenv("OPENAI_API_KEY");
+        var service = new OpenAiService(chave, Duration.ofSeconds(60));
+
         var promptSistema = """
                 Você é um analisador de sentimentos de avaliações de produtos.
                 Escreva um parágrafo com até 50 palavras resumindo as avaliações e depois atribua qual o sentimento geral para o produto.
                 Identifique também 3 pontos fortes e 3 pontos fracos identificados a partir das avaliações.
-                                
+
                 #### Formato de saída
                 Nome do produto:
                 Resumo das avaliações: [resuma em até 50 palavras]
@@ -26,10 +44,7 @@ public class AnaliseDeSentimentos {
                 Pontos fortes: [3 bullets points]
                 Pontos fracos: [3 bullets points]
                 """;
-
-        var produto = "tapete-de-yoga";
-
-        var promptUsuario = carregarArquivo(produto);
+        var promptUsuario = lerConteudoDoArquivo(arquivo);
 
         var request = ChatCompletionRequest
                 .builder()
@@ -43,32 +58,62 @@ public class AnaliseDeSentimentos {
                                 promptUsuario)))
                 .build();
 
-        var chave = System.getenv("OPENAI_API_KEY");
-        var service = new OpenAiService(chave, Duration.ofSeconds(60));
+        var tentativas = 0;
+        while (tentativas != 5) {
+            try {
+                return service
+                        .createChatCompletion(request)
+                        .getChoices().get(0).getMessage().getContent();
+            } catch (OpenAiHttpException e) {
+                var errrorCode = e.statusCode;
+                switch (errrorCode) {
+                    case 400 -> throw   new RuntimeException("erro com a chave da api" + e);
+                    case 500, 503 -> {
+                        System.out.println("A api esta fora do ar, tentando conexao novamente...");
+                        Thread.sleep(1000 * 5);
+                    }
 
-        var resposta = service
-                .createChatCompletion(request)
-                .getChoices().get(0).getMessage().getContent();
+                }
 
-        salvarAnalise(produto, resposta);
-    }
-
-    private static String carregarArquivo(String arquivo) {
-        try {
-            var path = Path.of("src/main/resources/avaliacoes/avaliacoes-" +arquivo +".txt");
-            return Files.readAllLines(path).toString();
-        } catch (Exception e) {
-            throw new RuntimeException("Erro ao carregar o arquivo!", e);
+            }
         }
+        throw new RuntimeException("a api esta fora do ar");
     }
+}
 
-    private static void salvarAnalise(String arquivo, String analise) {
-        try {
-            var path = Path.of("src/main/resources/analises/analise-sentimentos-" +arquivo +".txt");
-            Files.writeString(path, analise, StandardOpenOption.CREATE_NEW);
-        } catch (Exception e) {
-            throw new RuntimeException("Erro ao salvar o arquivo!", e);
-        }
+private static List<Path> carregarArquivosDeAvaliacoes() {
+    try {
+        var diretorioAvaliacoes = Path.of("src/main/resources/avaliacoes");
+        return Files
+                .walk(diretorioAvaliacoes, 1)
+                .filter(path -> path.toString().endsWith(".txt"))
+                .collect(Collectors.toList());
+    } catch (Exception e) {
+        throw new RuntimeException("Erro ao carregar os arquivos de avaliacoes!", e);
     }
+}
 
+private static String lerConteudoDoArquivo(Path arquivo) {
+    try {
+        return Files.readAllLines(arquivo).toString();
+    } catch (Exception e) {
+        throw new RuntimeException("Erro ao ler conteudo do arquivo!", e);
+    }
+}
+
+private static void salvarArquivoDeAnaliseDeSentimento(Path arquivo, String analise) {
+    try {
+        var nomeProduto = arquivo
+                .getFileName()
+                .toString()
+                .replace(".txt", "")
+                .replace("avaliacoes-", "");
+        var path = Path.of("src/main/resources/analises/analise-sentimentos-" + nomeProduto + ".txt");
+        Files.writeString(path, analise, StandardOpenOption.CREATE_NEW);
+    } catch (Exception e) {
+        throw new RuntimeException("Erro ao salvar o arquivo!", e);
+    }
+}
+
+public void main() {
 }
