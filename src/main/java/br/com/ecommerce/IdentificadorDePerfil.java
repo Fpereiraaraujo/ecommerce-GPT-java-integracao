@@ -61,7 +61,7 @@ public class IdentificadorDePerfil {
     private static String carregarClientesDoArquivo() {
         try {
             var path = Path.of(ClassLoader
-                    .getSystemResource("lista_de_compras_10_clientes.csv")
+                    .getSystemResource("compras/lista_de_compras_10_clientes.csv")
                     .toURI());
             return Files.readAllLines(path).toString();
         } catch (Exception e) {
